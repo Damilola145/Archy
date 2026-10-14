@@ -33,6 +33,7 @@ export const REGISTRY_ABI = [
   // Admin — owner only
   { name: 'setRegistrar', type: 'function', stateMutability: 'nonpayable',  inputs: [{ name: '_registrar', type: 'address' }],                                 outputs: [] },
   // ERC-721
+  { name: 'balanceOf',    type: 'function', stateMutability: 'view',        inputs: [{ name: 'owner', type: 'address' }],                                       outputs: [{ name: '', type: 'uint256' }] },
   { name: 'ownerOf',      type: 'function', stateMutability: 'view',        inputs: [{ name: 'tokenId', type: 'uint256' }],                                    outputs: [{ name: '', type: 'address' }] },
   { name: 'transferFrom', type: 'function', stateMutability: 'nonpayable',  inputs: [{ name: 'from', type: 'address' }, { name: 'to', type: 'address' }, { name: 'tokenId', type: 'uint256' }], outputs: [] },
   // Registry reads

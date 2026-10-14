@@ -1,13 +1,16 @@
+import { useState } from 'react'
 import { useAccount, useReadContract } from 'wagmi'
 import { activeChain } from '@/config'
 import { erc20Abi } from 'viem'
 import { getUsdc } from '@/onchain-facts'
 import { Amount, usdcDecimalsFor } from '@/onchain-money'
-import { useReverseName } from '@/hooks/useResolver'
+import type { UseMyNamesResult } from '@/hooks/useMyNames'
 import { TokenUSDC } from '@web3icons/react'
-import { formatAddress } from '@/utils/formatAddress'
+import { formatAddressShort } from '@/utils/formatAddress'
 import { formatName } from '@/utils/nameNormalize'
-import { Wallet, ArrowUpRight, ArrowDownLeft, RefreshCw } from 'lucide-react'
+import { Wallet, ArrowUpRight, ArrowDownLeft, RefreshCw, AlertTriangle, AtSign, Copy } from 'lucide-react'
+import { toast } from 'sonner'
+import BottomSheet from './BottomSheet'
 
 const CHAIN_ID = activeChain.id
 const usdcFact = getUsdc(CHAIN_ID)
@@ -16,13 +19,15 @@ interface DashboardScreenProps {
   onSend: () => void
   onRequest: () => void
   onMint: () => void
-  ownedNames: string[]
+  myNames: UseMyNamesResult
 }
 
-export default function DashboardScreen({ onSend, onRequest, onMint, ownedNames }: DashboardScreenProps) {
+export default function DashboardScreen({ onSend, onRequest, onMint, myNames }: DashboardScreenProps) {
   const { address, isConnected } = useAccount()
+  const { names, activeName, status, refetch, setPreferredName } = myNames
+  const [sheetOpen, setSheetOpen] = useState(false)
 
-  const { data: rawBalance, isLoading: balLoading, refetch } = useReadContract({
+  const { data: rawBalance, isLoading: balLoading, refetch: refetchBal } = useReadContract({
     address: usdcFact?.address as `0x${string}`,
     abi: erc20Abi,
     functionName: 'balanceOf',
@@ -31,11 +36,14 @@ export default function DashboardScreen({ onSend, onRequest, onMint, ownedNames 
     query: { enabled: Boolean(address) && Boolean(usdcFact) },
   })
 
-  const { data: primaryName } = useReverseName(address)
-
   const formattedBalance = rawBalance !== undefined
     ? Amount.fromRaw(rawBalance, usdcDecimalsFor(CHAIN_ID)).toFixed(2)
     : null
+
+  function handleCopyAddress() {
+    if (!address) return
+    void navigator.clipboard.writeText(address).then(() => toast.success('Address copied!'))
+  }
 
   if (!isConnected) {
     return (
@@ -45,6 +53,17 @@ export default function DashboardScreen({ onSend, onRequest, onMint, ownedNames 
       </div>
     )
   }
+
+  // Address / name line content
+  const shortAddr = formatAddressShort(address ?? '')
+  const nameLine = activeName
+    ? `@${formatName(activeName)} → ${shortAddr}`
+    : shortAddr
+
+  // Extra names for the +N chip
+  const extraNames = activeName
+    ? names.filter(n => n !== activeName)
+    : names.slice(1)
 
   return (
     <div className="space-y-4">
@@ -65,7 +84,7 @@ export default function DashboardScreen({ onSend, onRequest, onMint, ownedNames 
             </span>
           </div>
           <button
-            onClick={() => { void refetch() }}
+            onClick={() => { void refetchBal() }}
             className="flex size-6 items-center justify-center rounded-full transition hover:bg-black/5"
             aria-label="Refresh"
           >
@@ -80,9 +99,26 @@ export default function DashboardScreen({ onSend, onRequest, onMint, ownedNames 
           <span className="text-lg font-medium" style={{ color: 'var(--subtle)' }}>USDC</span>
         </div>
 
-        <p className="mt-1.5 text-xs mono" style={{ color: 'var(--muted)' }}>
-          {primaryName ? `${formatName(primaryName)} · ` : ''}{formatAddress(address ?? '')}
-        </p>
+        {/* Address / name line */}
+        <div className="mt-2 flex items-center gap-1.5">
+          <button
+            onClick={handleCopyAddress}
+            className="text-xs mono text-left transition hover:opacity-70"
+            style={{ color: 'var(--muted)' }}
+            title="Copy full address"
+          >
+            {nameLine}
+          </button>
+          {extraNames.length > 0 && (
+            <button
+              onClick={() => setSheetOpen(true)}
+              className="text-xs font-semibold px-1.5 py-0.5 rounded-full"
+              style={{ background: 'var(--surface-muted)', color: 'var(--accent)' }}
+            >
+              +{extraNames.length}
+            </button>
+          )}
+        </div>
       </section>
 
       {/* Action row */}
@@ -101,12 +137,73 @@ export default function DashboardScreen({ onSend, onRequest, onMint, ownedNames 
           style={{ border: '1px solid var(--border)', color: 'var(--ink)' }}
         >
           <ArrowDownLeft className="size-4" />
-          Request
+          Receive
         </button>
       </div>
 
-      {/* No name CTA — only show if the wallet truly has no name at all */}
-      {!primaryName && ownedNames.length === 0 && (
+      {/* Minted name card — shown beneath balance when user has a name */}
+      {status === 'ready' && names.length > 0 && activeName && (
+        <div
+          className="rounded-2xl px-4 py-3 flex items-center justify-between gap-3"
+          style={{ background: 'var(--surface-strong)', border: '1px solid rgba(16,97,166,0.2)' }}
+        >
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div
+              className="size-8 shrink-0 rounded-xl flex items-center justify-center"
+              style={{ background: 'rgba(16,97,166,0.1)' }}
+            >
+              <AtSign className="size-4" style={{ color: 'var(--accent)' }} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-bold truncate" style={{ color: 'var(--ink)' }}>
+                {formatName(activeName)}
+              </p>
+              <p className="text-xs mono truncate" style={{ color: 'var(--muted)' }}>
+                {formatAddressShort(address ?? '')}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              void navigator.clipboard.writeText(formatName(activeName)).then(() =>
+                toast.success(`Copied ${formatName(activeName)}`)
+              )
+            }}
+            className="shrink-0 flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition hover:opacity-80"
+            style={{ background: 'rgba(16,97,166,0.1)', color: 'var(--accent)' }}
+          >
+            <Copy className="size-3.5" />
+            Copy
+          </button>
+        </div>
+      )}
+
+      {/* CTA / skeleton / error — based on status */}
+      {status === 'loading' && (
+        <div
+          className="rounded-2xl p-4 flex items-center justify-between animate-pulse"
+          style={{ background: 'var(--surface-muted)', border: '1px solid var(--border)' }}
+        >
+          <div className="space-y-1.5">
+            <div className="h-3 w-28 rounded-full" style={{ background: 'var(--border)' }} />
+            <div className="h-2.5 w-40 rounded-full" style={{ background: 'var(--border)' }} />
+          </div>
+          <div className="h-7 w-16 rounded-xl" style={{ background: 'var(--border)' }} />
+        </div>
+      )}
+
+      {status === 'error' && (
+        <div
+          className="rounded-2xl p-3 flex items-center gap-2 text-sm"
+          style={{ background: 'rgba(186,43,76,0.06)', border: '1px solid rgba(186,43,76,0.2)', color: 'var(--danger)' }}
+        >
+          <AlertTriangle className="size-4 shrink-0" />
+          <span>Couldn't load your name</span>
+          <button onClick={refetch} className="ml-auto text-xs font-semibold underline">Retry</button>
+        </div>
+      )}
+
+      {status === 'ready' && names.length === 0 && (
         <div
           className="rounded-2xl p-4 flex items-center justify-between"
           style={{ background: 'var(--surface-muted)', border: '1px solid var(--border)' }}
@@ -124,6 +221,33 @@ export default function DashboardScreen({ onSend, onRequest, onMint, ownedNames 
           </button>
         </div>
       )}
+
+      {/* Names picker bottom sheet */}
+      <BottomSheet open={sheetOpen} onClose={() => setSheetOpen(false)} title="Your names">
+        <div className="space-y-2">
+          {names.map(lbl => (
+            <button
+              key={lbl}
+              onClick={() => {
+                setPreferredName(lbl)
+                setSheetOpen(false)
+              }}
+              className="w-full flex items-center justify-between rounded-2xl px-4 py-3 text-sm transition hover:bg-black/5"
+              style={{
+                background: lbl === activeName ? 'rgba(16,97,166,0.08)' : 'var(--surface-muted)',
+                border: `1px solid ${lbl === activeName ? 'rgba(16,97,166,0.25)' : 'transparent'}`,
+              }}
+            >
+              <span className="font-semibold" style={{ color: 'var(--ink)' }}>{formatName(lbl)}</span>
+              {lbl === activeName && (
+                <span className="text-xs px-2 py-0.5 rounded-full font-medium" style={{ background: 'rgba(16,97,166,0.12)', color: 'var(--accent)' }}>
+                  Active
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </BottomSheet>
     </div>
   )
 }

@@ -3,7 +3,6 @@ import { useAccount, useSwitchChain, useReadContract, usePublicClient, useWriteC
 import { activeChain } from '@/config'
 import { toast } from 'sonner'
 import { Settings, CheckCircle, Loader2, Link, Search, ExternalLink } from 'lucide-react'
-import { useReverseName } from '@/hooks/useResolver'
 import { useOwnerOf } from '@/hooks/useNameRegistry'
 import { parseOnchainError, formatAddress } from '@/utils/formatAddress'
 import { normalizeName, formatName } from '@/utils/nameNormalize'
@@ -13,6 +12,7 @@ import {
 } from '@/contracts'
 import TxButton from './TxButton'
 import { labelhash } from '@/hooks/useNameRegistry'
+import type { UseMyNamesResult } from '@/hooks/useMyNames'
 
 const CHAIN_ID = activeChain.id
 const EXPLORER  = activeChain.blockExplorers?.default.url ?? ''
@@ -347,14 +347,14 @@ function SetAddrPanel({ label }: { label: string }) {
 }
 
 // ── Main Settings screen ──────────────────────────────────────────────────────
+
 interface SettingsScreenProps {
-  ownedNames: string[]
+  myNames: UseMyNamesResult
 }
 
-export default function SettingsScreen({ ownedNames }: SettingsScreenProps) {
-  const { address, isConnected } = useAccount()
-
-  const { data: primaryName } = useReverseName(address)
+export default function SettingsScreen({ myNames }: SettingsScreenProps) {
+  const { isConnected } = useAccount()
+  const { names: ownedNames, activeName: primaryName } = myNames
 
   // Registrar wiring check
   const { data: currentRegistrar } = useReadContract({
@@ -406,7 +406,7 @@ export default function SettingsScreen({ ownedNames }: SettingsScreenProps) {
                     </span>
                   )}
                 </div>
-                <SetPrimaryPanel label={lbl} currentPrimary={primaryName} />
+                <SetPrimaryPanel label={lbl} currentPrimary={primaryName ?? undefined} />
                 <SetAddrPanel label={lbl} />
               </div>
             ))}

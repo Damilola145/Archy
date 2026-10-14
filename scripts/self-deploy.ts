@@ -538,7 +538,7 @@ function upsertContractMetadata(input: {
     contract_code_path: existing.contract_code_path ?? `${CONTRACT_SOURCES_DIR}/${input.name}.sol`,
     contract_compiled_code_path: input.artifactPath,
     contract_network_and_links: {
-      ...(existing.contract_network_and_links ?? {}),
+      ...existing.contract_network_and_links,
       [displayName]: input.explorerUrl,
     },
     contract_deployments: [entry, ...(existing.contract_deployments ?? [])],

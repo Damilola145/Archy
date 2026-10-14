@@ -3,6 +3,12 @@ export function formatAddress(addr: string): string {
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`
 }
 
+/** Short form used in the balance card: first 5 chars + ellipsis + last 3 chars */
+export function formatAddressShort(addr: string): string {
+  if (!addr || addr.length < 8) return addr
+  return `${addr.slice(0, 5)}…${addr.slice(-3)}`
+}
+
 export function parseOnchainError(error: unknown): string {
   const message = (error as { message?: string })?.message?.toLowerCase() ?? ''
 

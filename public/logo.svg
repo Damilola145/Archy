@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <rect width="200" height="200" fill="#0a0a0a" rx="20"/>
+  <!-- Main A shape -->
+  <path
+    d="M100 28 L162 158 H142 L128 126 H72 L58 158 H38 Z"
+    fill="white"
+  />
+  <!-- Inner cutout of A -->
+  <path
+    d="M100 62 L120 112 H80 Z"
+    fill="#0a0a0a"
+  />
+  <!-- Arc swoosh beneath the A legs -->
+  <path
+    d="M52 148 Q100 108 148 148"
+    stroke="#0a0a0a"
+    stroke-width="14"
+    fill="none"
+    stroke-linecap="round"
+  />
+  <path
+    d="M50 152 Q100 106 154 148"
+    stroke="white"
+    stroke-width="7"
+    fill="none"
+    stroke-linecap="round"
+  />
+  <!-- Right leg tail curl hint -->
+  <path
+    d="M148 148 L155 158 L145 154"
+    fill="white"
+  />
+</svg>

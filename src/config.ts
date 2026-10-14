@@ -8,7 +8,7 @@
 import { http, createConfig } from 'wagmi'
 import { defineChain } from 'viem'
 import { getDefaultConfig } from 'connectkit'
-import { injected, walletConnect } from 'wagmi/connectors'
+import { injected } from 'wagmi/connectors'
 
 // ── Define Arc chains from onchain-facts (single source of truth) ─────────────
 
@@ -34,8 +34,6 @@ export const arcMainnetChain = defineChain({
 const useMainnet = import.meta.env.VITE_CHAIN === 'mainnet'
 export const activeChain = useMainnet ? arcMainnetChain : arcTestnetChain
 
-const wcProjectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID as string | undefined
-
 export const config = createConfig(
   getDefaultConfig({
     chains: [activeChain],
@@ -47,12 +45,11 @@ export const config = createConfig(
     // 1s polling — receipt watchers and read hooks refresh every second.
     pollingInterval: 1_000,
 
-    connectors: [
-      injected(),
-      ...(wcProjectId ? [walletConnect({ projectId: wcProjectId })] : []),
-    ],
+    // Only injected (browser/MetaMask) — no WalletConnect popup.
+    connectors: [injected()],
 
-    walletConnectProjectId: wcProjectId ?? '',
+    // Empty string disables WalletConnect in ConnectKit's own modal.
+    walletConnectProjectId: '',
     appName: 'arc.name',
     appDescription: 'Your decentralised name on Arc — send USDC by name',
     appUrl: typeof window !== 'undefined' ? window.location.origin : 'https://arc.name',

@@ -1,42 +1,58 @@
 import { useState } from 'react'
 import { useAccount, useSwitchChain } from 'wagmi'
-import { useOwnedNames } from './hooks/useOwnedNames'
+import { useMyNames } from './hooks/useMyNames'
 import { activeChain } from './config'
 import { ConnectKitButton } from 'connectkit'
-import { Home, Send, ArrowDownLeft, Scissors, Settings } from 'lucide-react'
+import { Home, Scissors, Settings, ChevronLeft } from 'lucide-react'
 import DashboardScreen from './components/DashboardScreen'
 import MintScreen from './components/MintScreen'
 import SendScreen from './components/SendScreen'
-import RequestScreen from './components/RequestScreen'
+import ReceiveScreen from './components/ReceiveScreen'
 import SettingsScreen from './components/SettingsScreen'
 import { AdminBanner } from './components/AdminBanner'
 
 const CHAIN_ID = activeChain.id
 
-type Tab = 'dashboard' | 'mint' | 'send' | 'request' | 'settings'
+type Tab = 'dashboard' | 'mint' | 'send' | 'receive' | 'settings'
 
-const tabs: { id: Tab; label: string; Icon: typeof Home }[] = [
-  { id: 'dashboard', label: 'Home', Icon: Home },
-  { id: 'mint', label: 'Mint', Icon: Scissors },
-  { id: 'send', label: 'Send', Icon: Send },
-  { id: 'request', label: 'Request', Icon: ArrowDownLeft },
-  { id: 'settings', label: 'Settings', Icon: Settings },
+// Tabs that always appear in the bottom nav
+const NAV_TABS: { id: Tab; label: string; Icon: typeof Home }[] = [
+  { id: 'dashboard', label: 'Home',     Icon: Home },
+  { id: 'mint',      label: 'Mint',     Icon: Scissors },
+  { id: 'settings',  label: 'Settings', Icon: Settings },
 ]
 
+// Tabs that are "sub-pages" — navigated to via action buttons, not the nav bar
+const SUB_TABS = new Set<Tab>(['send', 'receive'])
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState<Tab>('dashboard')
+  const [activeTab,  setActiveTab]  = useState<Tab>('dashboard')
+  const [prevTab,    setPrevTab]    = useState<Tab>('dashboard')
   const { isConnected, chainId } = useAccount()
   const { switchChain } = useSwitchChain()
-  const { names: ownedNames, refresh: refreshOwnedNames } = useOwnedNames()
+  const myNames = useMyNames()
 
   const wrongChain = isConnected && chainId !== CHAIN_ID
+
+  function goTo(tab: Tab) {
+    setPrevTab(activeTab)
+    setActiveTab(tab)
+  }
+
+  function goBack() {
+    setActiveTab(prevTab)
+    setPrevTab('dashboard')
+  }
+
+  const isSubPage = SUB_TABS.has(activeTab)
 
   return (
     <div className="min-h-dvh" style={{ background: 'var(--bg-gradient)' }}>
       <AdminBanner />
+
       {/* Header */}
       <header
-        className="sticky top-0 z-30 flex items-center justify-between px-4 py-3"
+        className="sticky top-0 z-30 px-4"
         style={{
           background: 'rgba(255,255,255,0.82)',
           backdropFilter: 'blur(20px) saturate(180%)',
@@ -44,53 +60,73 @@ export default function App() {
           borderBottom: '1px solid var(--border)',
         }}
       >
-        <div className="flex items-center gap-2">
-          <div
-            className="size-7 rounded-lg flex items-center justify-center text-xs font-bold text-white"
-            style={{ background: 'var(--accent)' }}
-          >
-            A
+        {/* Top row — logo + connect */}
+        <div className="flex items-center justify-between py-3">
+          <div className="flex items-center gap-2">
+            <img src="/logo.svg" alt="ArcName" className="size-8 rounded-lg" />
+            <span className="display text-sm font-semibold tracking-tight" style={{ color: 'var(--ink)' }}>ArcName</span>
           </div>
-          <span className="display text-sm font-semibold" style={{ color: 'var(--ink)' }}>arc.name</span>
+          <div className="flex items-center gap-2">
+            {wrongChain && (
+              <button
+                onClick={() => switchChain({ chainId: CHAIN_ID })}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+                style={{ background: 'rgba(186,43,76,0.08)', color: 'var(--danger)' }}
+              >
+                Wrong network
+              </button>
+            )}
+            <ConnectKitButton
+              customTheme={{
+                '--ck-font-family': "'DM Sans', sans-serif",
+                '--ck-primary-button-background': '#122d45',
+                '--ck-primary-button-hover-background': '#1061a6',
+                '--ck-body-background': '#ffffff',
+                '--ck-body-color': '#122d45',
+                '--ck-border-radius': '16px',
+              }}
+            />
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          {wrongChain && (
+        {/* Back button row — only visible on sub-pages */}
+        {isSubPage && (
+          <div className="pb-2">
             <button
-              onClick={() => switchChain({ chainId: CHAIN_ID })}
-              className="text-xs font-semibold px-3 py-1.5 rounded-lg"
-              style={{ background: 'rgba(186,43,76,0.08)', color: 'var(--danger)' }}
+              onClick={goBack}
+              className="flex items-center gap-1 text-sm font-medium transition hover:opacity-70"
+              style={{ color: 'var(--accent)' }}
             >
-              Wrong network
+              <ChevronLeft className="size-4" />
+              Back
             </button>
-          )}
-          <ConnectKitButton
-            customTheme={{
-              '--ck-font-family': "'DM Sans', sans-serif",
-              '--ck-primary-button-background': '#122d45',
-              '--ck-primary-button-hover-background': '#1061a6',
-              '--ck-body-background': '#ffffff',
-              '--ck-body-color': '#122d45',
-              '--ck-border-radius': '16px',
-            }}
-          />
-        </div>
+          </div>
+        )}
       </header>
 
       {/* Main content */}
       <main className="mx-auto max-w-md px-4 py-5 pb-24">
         {activeTab === 'dashboard' && (
           <DashboardScreen
-            onSend={() => setActiveTab('send')}
-            onRequest={() => setActiveTab('request')}
-            onMint={() => setActiveTab('mint')}
-            ownedNames={ownedNames}
+            onSend={() => goTo('send')}
+            onRequest={() => goTo('receive')}
+            onMint={() => goTo('mint')}
+            myNames={myNames}
           />
         )}
-        {activeTab === 'mint' && <MintScreen ownedNames={ownedNames} onMintComplete={refreshOwnedNames} />}
-        {activeTab === 'send' && <SendScreen />}
-        {activeTab === 'request' && <RequestScreen />}
-        {activeTab === 'settings' && <SettingsScreen ownedNames={ownedNames} />}
+        {activeTab === 'mint' && (
+          <MintScreen
+            myNames={myNames}
+            onMintComplete={() => {
+              myNames.refetch()
+              setTimeout(() => myNames.refetch(), 3_000)
+              setTimeout(() => myNames.refetch(), 8_000)
+            }}
+          />
+        )}
+        {activeTab === 'send'    && <SendScreen />}
+        {activeTab === 'receive' && <ReceiveScreen myNames={myNames} onGoMint={() => goTo('mint')} />}
+        {activeTab === 'settings' && <SettingsScreen myNames={myNames} />}
       </main>
 
       {/* Bottom nav */}
@@ -103,10 +139,10 @@ export default function App() {
           borderTop: '1px solid var(--border)',
         }}
       >
-        {tabs.map(({ id, label, Icon }) => (
+        {NAV_TABS.map(({ id, label, Icon }) => (
           <button
             key={id}
-            onClick={() => setActiveTab(id)}
+            onClick={() => goTo(id)}
             className="flex flex-col items-center gap-0.5 px-4 py-3 min-w-[44px] transition-all"
             style={{ color: activeTab === id ? 'var(--accent)' : 'var(--subtle)' }}
           >
