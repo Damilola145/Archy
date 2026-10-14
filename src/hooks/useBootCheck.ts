@@ -28,39 +28,41 @@ const REGISTRY_GETTER_ABI = [
 export function useBootCheck() {
   const enabled = CONTRACTS_DEPLOYED
 
+  const fresh = { staleTime: 0, gcTime: 0, refetchOnMount: true } as const
+
   // 1. registry.registrar()
   const { data: wiredRegistrar, isLoading: l1 } = useReadContract({
     address: REGISTRY_ADDRESS, abi: REGISTRY_ABI,
     functionName: 'registrar', chainId: CHAIN_ID,
-    query: { enabled },
+    query: { enabled, ...fresh },
   })
 
   // 2. registrar.registry()
   const { data: registrarRegistry, isLoading: l2 } = useReadContract({
     address: REGISTRAR_ADDRESS, abi: REGISTRY_GETTER_ABI,
     functionName: 'registry', chainId: CHAIN_ID,
-    query: { enabled },
+    query: { enabled, ...fresh },
   })
 
   // 3. resolver.registry()
   const { data: resolverRegistry, isLoading: l3 } = useReadContract({
     address: RESOLVER_ADDRESS, abi: RESOLVER_ABI,
     functionName: 'registry', chainId: CHAIN_ID,
-    query: { enabled },
+    query: { enabled, ...fresh },
   })
 
   // 4. reverseRegistrar.registry()
   const { data: reverseRegistry, isLoading: l4 } = useReadContract({
     address: REVERSE_REGISTRAR_ADDRESS, abi: REVERSE_REGISTRAR_ABI,
     functionName: 'registry', chainId: CHAIN_ID,
-    query: { enabled },
+    query: { enabled, ...fresh },
   })
 
   // 5. registrar.paused()
   const { data: isPaused, isLoading: l5 } = useReadContract({
     address: REGISTRAR_ADDRESS, abi: REGISTRAR_ABI,
     functionName: 'paused', chainId: CHAIN_ID,
-    query: { enabled },
+    query: { enabled, ...fresh },
   })
 
   const checking = l1 || l2 || l3 || l4 || l5

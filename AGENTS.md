@@ -28,7 +28,21 @@ forge script contracts/script/Deploy.s.sol \
 Copy the printed `.env` block into `.env` and restart the dev server.
 The deploy script calls `registry.setRegistrar(registrar)` in the same broadcast — the system is fully wired immediately.
 
-## Deployed Addresses (Arc Testnet — v3, current)
+## Deployed Addresses (Arc Mainnet — v3, current)
+
+| Contract | Address |
+|---|---|
+| FreeOracle | 0xDcE9E1fafFa27Fc799cc213Af7815455c2F7d2f7 |
+| ArcNameRegistry | 0x18C70A528F76384bB643BB4DbdFa80316B9C4b9D |
+| ArcNameRegistrar | 0xbf9A7cFa59Ce6dF0833e251912c9d451E140b444 |
+| ArcResolver | 0x2729D7cE217791bc167234Ca91343Ec33f26fCd2 |
+| ArcReverseRegistrar | 0xEC65a94E503B323fE796C969C1156392edC3e812 |
+
+**Deploy block:** 25937202
+**Owner:** `0x9b8AcF5ec33eb1e809E3c249A3546e1537c346B9`
+**Chain:** Arc Mainnet (5042)
+
+## Deployed Addresses (Arc Testnet — v3, reference)
 
 | Contract | Address |
 |---|---|

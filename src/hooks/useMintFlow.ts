@@ -86,11 +86,18 @@ function clearPersisted() {
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
-export function useMintFlow(onComplete?: () => void) {
+export function useMintFlow(onComplete?: () => void, onMintedLabel?: (label: string) => void) {
   const { address, isConnected, chainId } = useAccount()
   const { switchChain }  = useSwitchChain()
   const queryClient      = useQueryClient()
   const publicClient     = usePublicClient({ chainId: CHAIN_ID })
+
+  // Store callbacks in refs so effects always call the latest version
+  // (avoids stale closure when seedName is recreated with a new address)
+  const onMintedLabelRef = useRef(onMintedLabel)
+  const onCompleteRef    = useRef(onComplete)
+  useEffect(() => { onMintedLabelRef.current = onMintedLabel }, [onMintedLabel])
+  useEffect(() => { onCompleteRef.current    = onComplete    }, [onComplete])
 
   const wrongChain = isConnected && chainId !== CHAIN_ID
 
@@ -270,7 +277,8 @@ export function useMintFlow(onComplete?: () => void) {
       void queryClient.invalidateQueries({ queryKey: availQueryKey })
       setPhase('done')
       toast.success(`${formatName(normalized ?? '')} is yours!`)
-      onComplete?.()
+      if (normalized) onMintedLabelRef.current?.(normalized)
+      onCompleteRef.current?.()
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [registerReceiptOk, walletOwnsName])

@@ -1,13 +1,16 @@
 /**
  * useMyNames — single source of truth for names owned by a wallet.
  *
- * Priority order (fastest → most complete):
- *  1. localStorage cache  → instant paint
- *  2. reverseRecord       → single eth_call, arrives in ~1s, verified with ownerOf
- *  3. getLogs scan        → background enrichment (best-effort, non-fatal)
- *
- * The skeleton only shows when we have nothing at all (no cache, no reverse record).
- * As soon as reverseRecord resolves we verify and show it — no log scan needed.
+ * Design (one name per wallet):
+ *  - seedName(label) is the AUTHORITATIVE write path — used after a mint.
+ *    It writes synchronously to state + localStorage and marks status ready.
+ *    The log scan NEVER overwrites a seeded name.
+ *  - reverseRecord (onchain) is used to recover the name on page reload.
+ *  - balanceOf = 0 confirms no name (fast empty path).
+ *  - getLogs is background-only enrichment — its results only ADD names,
+ *    never REMOVE or OVERWRITE names that are already in state.
+ *  - A 10s timeout sets status = 'ready' when nothing else resolves it,
+ *    so the UI never stays stuck on 'loading' forever.
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react'
@@ -23,8 +26,8 @@ import { activeChain } from '@/config'
 const CHAIN_ID = activeChain.id
 const DEPLOY_BLOCK = BigInt(import.meta.env.VITE_REGISTRY_DEPLOY_BLOCK ?? '0')
 const CHUNK = 10_000n
-const CACHE_PREFIX = 'arc-name-owned:'
-const ACTIVE_PREFIX = 'arc-name-active:'
+const CACHE_PREFIX  = `arc-name-owned:${CHAIN_ID}:`
+const ACTIVE_PREFIX = `arc-name-active:${CHAIN_ID}:`
 
 export type MyNamesStatus = 'loading' | 'ready' | 'error'
 
@@ -34,56 +37,52 @@ export interface UseMyNamesResult {
   status: MyNamesStatus
   refetch: () => void
   setPreferredName: (label: string) => void
+  /** Call immediately after mint — writes name to state + cache, never blocked by RPC */
+  seedName: (label: string) => void
 }
 
-// ── Viem client ───────────────────────────────────────────────────────────────
-const publicClient = createPublicClient({
+// ── Viem public client ────────────────────────────────────────────────────────
+const viemClient = createPublicClient({
   chain: activeChain,
   transport: http(activeChain.rpcUrls.default.http[0]),
 })
 
-// ── Minimal ABI ───────────────────────────────────────────────────────────────
-const OWN_ABI = [
+// ── Minimal ABI slices ────────────────────────────────────────────────────────
+const OWNER_OF_ABI = [
   {
     type: 'function', name: 'ownerOf',
     inputs:  [{ name: 'tokenId', type: 'uint256' }],
     outputs: [{ name: '', type: 'address' }],
     stateMutability: 'view',
   },
-  {
-    type: 'event', name: 'NameRegistered',
-    inputs: [
-      { name: 'node',   type: 'bytes32', indexed: true  },
-      { name: 'label',  type: 'string',  indexed: false },
-      { name: 'owner',  type: 'address', indexed: true  },
-      { name: 'expiry', type: 'uint256', indexed: false },
-    ],
-  },
-  {
-    type: 'event', name: 'Transfer',
-    inputs: [
-      { name: 'from',    type: 'address', indexed: true },
-      { name: 'to',      type: 'address', indexed: true },
-      { name: 'tokenId', type: 'uint256', indexed: true },
-    ],
-  },
 ] as const
 
-// ── localStorage ──────────────────────────────────────────────────────────────
+const NAME_REGISTERED_EVENT = {
+  type: 'event', name: 'NameRegistered',
+  inputs: [
+    { name: 'node',   type: 'bytes32', indexed: true  },
+    { name: 'label',  type: 'string',  indexed: false },
+    { name: 'owner',  type: 'address', indexed: true  },
+    { name: 'expiry', type: 'uint256', indexed: false },
+  ],
+} as const
+
+// ── localStorage helpers ──────────────────────────────────────────────────────
+function cacheKey(addr: string)  { return CACHE_PREFIX  + addr.toLowerCase() }
+function activeKey(addr: string) { return ACTIVE_PREFIX + addr.toLowerCase() }
+
 function readCache(addr: string): string[] {
-  try {
-    const raw = localStorage.getItem(CACHE_PREFIX + addr.toLowerCase())
-    return raw ? (JSON.parse(raw) as string[]) : []
-  } catch { return [] }
+  try { return JSON.parse(localStorage.getItem(cacheKey(addr)) ?? '[]') as string[] }
+  catch { return [] }
 }
 function writeCache(addr: string, names: string[]) {
-  try { localStorage.setItem(CACHE_PREFIX + addr.toLowerCase(), JSON.stringify(names)) } catch { /* noop */ }
+  try { localStorage.setItem(cacheKey(addr), JSON.stringify(names.slice(0, 1))) } catch { /* noop */ }
 }
-function readActivePreference(addr: string): string | null {
-  try { return localStorage.getItem(ACTIVE_PREFIX + addr.toLowerCase()) } catch { return null }
+function readActivePref(addr: string): string | null {
+  try { return localStorage.getItem(activeKey(addr)) } catch { return null }
 }
 export function writeActivePreference(addr: string, label: string) {
-  try { localStorage.setItem(ACTIVE_PREFIX + addr.toLowerCase(), label) } catch { /* noop */ }
+  try { localStorage.setItem(activeKey(addr), label) } catch { /* noop */ }
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -91,91 +90,84 @@ function labelhash(label: string): `0x${string}` {
   return keccak256(toBytes(label)) as `0x${string}`
 }
 
-async function isOwned(label: string, address: `0x${string}`): Promise<boolean> {
+async function verifyOwned(label: string, address: `0x${string}`): Promise<boolean> {
   try {
-    const tokenId = BigInt(labelhash(label))
-    const owner = await publicClient.readContract({
+    const owner = await viemClient.readContract({
       address: REGISTRY_ADDRESS,
-      abi: OWN_ABI,
+      abi: OWNER_OF_ABI,
       functionName: 'ownerOf',
-      args: [tokenId],
+      args: [BigInt(labelhash(label))],
     })
     return typeof owner === 'string' && owner.toLowerCase() === address.toLowerCase()
-  } catch {
-    return false
-  }
+  } catch { return false }
 }
 
-// Best-effort log scan — returns [] on any failure
-async function scanLabelsFromLogs(
-  address: `0x${string}`,
-  signal: AbortSignal,
-): Promise<string[]> {
+// Best-effort log scan — silently returns [] on any failure
+async function scanLabels(address: `0x${string}`, signal: AbortSignal): Promise<string[]> {
   try {
-    const latest = await publicClient.getBlockNumber()
-    const labelSet = new Set<string>()
-
+    const latest = await viemClient.getBlockNumber()
+    const found  = new Set<string>()
     for (let from = DEPLOY_BLOCK; from <= latest; from += CHUNK + 1n) {
-      if (signal.aborted) return [...labelSet]
+      if (signal.aborted) break
       const to = from + CHUNK > latest ? latest : from + CHUNK
       try {
-        const logs = await publicClient.getLogs({
+        const logs = await viemClient.getLogs({
           address: REGISTRY_ADDRESS,
-          event: OWN_ABI[1],
-          args: { owner: address },
+          event:   NAME_REGISTERED_EVENT,
+          args:    { owner: address },
           fromBlock: from,
-          toBlock: to,
+          toBlock:   to,
         })
-        for (const l of logs) if (l.args.label) labelSet.add(l.args.label)
+        for (const l of logs) if (l.args.label) found.add(l.args.label)
       } catch { /* skip chunk */ }
-      if (signal.aborted) return [...labelSet]
-      try {
-        const transfers = await publicClient.getLogs({
-          address: REGISTRY_ADDRESS,
-          event: OWN_ABI[2],
-          args: { to: address },
-          fromBlock: from,
-          toBlock: to,
-        })
-        // For transfers we only have tokenId; skip getRecord (it's a bonus)
-        void transfers
-      } catch { /* skip */ }
     }
-    return [...labelSet]
-  } catch {
-    return []
-  }
+    return [...found]
+  } catch { return [] }
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 export function useMyNames(): UseMyNamesResult {
   const { address } = useAccount()
 
-  const [names, setNames]   = useState<string[]>([])
+  // seededRef tracks labels written by seedName so the log scan never overwrites them
+  const seededRef    = useRef<string | null>(null)
+  const scanAbortRef = useRef<AbortController | null>(null)
+  const timeoutRef   = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // addressRef always holds the latest address — seedName reads from this, not its closure
+  const addressRef   = useRef(address)
+  useEffect(() => { addressRef.current = address }, [address])
+
+  const [names,  setNames]  = useState<string[]>([])
   const [status, setStatus] = useState<MyNamesStatus>('loading')
-  const [tick, setTick]     = useState(0)
-  const scanAbortRef  = useRef<AbortController | null>(null)
+  const [tick,   setTick]   = useState(0)
 
-  // ── wagmi reads ────────────────────────────────────────────────────────────
-  const { data: reverseRecord } = useReadContract({
+  // ── wagmi reads ──────────────────────────────────────────────────────────
+  const { data: reverseRecord, refetch: refetchReverse } = useReadContract({
     address: REVERSE_REGISTRAR_ADDRESS,
-    abi: REVERSE_REGISTRAR_ABI,
+    abi:     REVERSE_REGISTRAR_ABI,
     functionName: 'name',
-    args: [address ?? '0x0000000000000000000000000000000000000000'],
+    args:  [address ?? '0x0000000000000000000000000000000000000000'],
     chainId: CHAIN_ID,
     query: { enabled: CONTRACTS_DEPLOYED && Boolean(address) },
   })
 
-  const { data: balance } = useReadContract({
+  const { data: balance, refetch: refetchBalance } = useReadContract({
     address: REGISTRY_ADDRESS,
-    abi: REGISTRY_ABI,
+    abi:     REGISTRY_ABI,
     functionName: 'balanceOf',
-    args: [address ?? '0x0000000000000000000000000000000000000000'],
+    args:  [address ?? '0x0000000000000000000000000000000000000000'],
     chainId: CHAIN_ID,
     query: { enabled: CONTRACTS_DEPLOYED && Boolean(address) },
   })
 
-  const refetch = useCallback(() => setTick(t => t + 1), [])
+  // ── Public API ───────────────────────────────────────────────────────────
+
+  /** Force all wagmi reads to re-query and re-run the scan */
+  const refetch = useCallback(() => {
+    void refetchReverse()
+    void refetchBalance()
+    setTick(t => t + 1)
+  }, [refetchReverse, refetchBalance])
 
   const setPreferredName = useCallback((label: string) => {
     if (!address) return
@@ -183,57 +175,114 @@ export function useMyNames(): UseMyNamesResult {
     setTick(t => t + 1)
   }, [address])
 
-  // ── Step 1: seed from cache immediately on address change ──────────────────
+  /**
+   * seedName — call immediately after a successful mint.
+   *
+   * Writes the label directly to state + cache so the home screen and receive
+   * page update INSTANTLY, before any chain read.  The log scan will NEVER
+   * overwrite this value (seededRef guards it).
+   */
+  const seedName = useCallback((label: string) => {
+    // Use addressRef so this always sees the current address,
+    // even if the useCallback closure was created before address resolved
+    const addr = addressRef.current
+    if (!addr) return
+    seededRef.current = label
+    writeCache(addr, [label])
+    writeActivePreference(addr, label)
+    setNames([label])
+    setStatus('ready')
+    // Background: kick off chain validation after delay
+    setTimeout(() => {
+      void refetchReverse()
+      void refetchBalance()
+    }, 2_000)
+    setTimeout(() => {
+      void refetchReverse()
+    }, 7_000)
+  // addressRef is a ref — intentionally not in deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [refetchReverse, refetchBalance])
+
+  // ── Effect 1: address change — seed from cache instantly ─────────────────
   useEffect(() => {
-    if (!address) { setNames([]); setStatus('ready'); return }
+    // Clear previous timeout
+    if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null }
+    seededRef.current = null
+
+    if (!address) {
+      setNames([])
+      setStatus('ready')
+      return
+    }
+
     const cached = readCache(address)
     if (cached.length > 0) {
+      seededRef.current = cached[0]  // treat cached name as seeded (verified previously)
       setNames(cached)
       setStatus('ready')
     } else {
       setNames([])
       setStatus('loading')
+      // Safety timeout — if nothing resolves in 10s, stop spinning
+      timeoutRef.current = setTimeout(() => {
+        setStatus(s => s === 'loading' ? 'ready' : s)
+      }, 10_000)
+    }
+
+    return () => {
+      if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null }
     }
   }, [address])
 
-  // ── Step 2: fast path — reverseRecord as a single verified candidate ───────
-  // Runs as soon as reverseRecord resolves. No log scan needed.
+  // ── Effect 2: balance = 0 confirmed → definitely no names ────────────────
+  useEffect(() => {
+    if (!address || !CONTRACTS_DEPLOYED) return
+    if (balance !== 0n) return
+    // Only clear if we don't have a seeded name (seedName takes priority)
+    if (seededRef.current) return
+    writeCache(address, [])
+    setNames([])
+    setStatus('ready')
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [address, balance])
+
+  // ── Effect 3: reverseRecord arrived — verify and set as name ─────────────
   useEffect(() => {
     if (!address || !CONTRACTS_DEPLOYED) return
     if (typeof reverseRecord !== 'string' || reverseRecord.length === 0) return
 
     const rev = reverseRecord
-    void (async () => {
-      const owned = await isOwned(rev, address)
-      if (!owned) return
 
-      // Merge with whatever we already have
+    void (async () => {
+      const owned = await verifyOwned(rev, address)
+      if (!owned) return  // stale reverse record, ignore
+
+      // reverseRecord is valid — update names (merge, don't replace seeded name)
       setNames(prev => {
-        const merged = [...new Set([rev, ...prev])]
-        writeCache(address, merged)
-        return merged
+        // If seeded name is different from reverse record, prefer seeded
+        // (user just minted; reverse record may not be set yet)
+        if (seededRef.current && seededRef.current !== rev) {
+          // Both are valid — seeded is more recent, keep it as first
+          const merged = [seededRef.current, ...prev.filter(n => n !== seededRef.current && n !== rev)]
+          const capped = merged.slice(0, 1)
+          writeCache(address, capped)
+          return capped
+        }
+        // Reverse record matches or no seed — use reverse record
+        seededRef.current = rev
+        const capped = [rev]
+        writeCache(address, capped)
+        writeActivePreference(address, rev)
+        return capped
       })
       setStatus('ready')
+      if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null }
     })()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [address, reverseRecord])
 
-  // ── Step 3: confirmed zero balance — clear ─────────────────────────────────
-  useEffect(() => {
-    if (!address || !CONTRACTS_DEPLOYED) return
-    if (balance !== 0n) return
-    // Don't override a list that already has names (reverse record may have populated it)
-    setNames(prev => {
-      if (prev.length > 0) return prev
-      writeCache(address, [])
-      setStatus('ready')
-      return []
-    })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [address, balance === 0n])
-
-  // ── Step 4: background log scan for full name list ────────────────────────
-  // Only runs when balance > 0 and we still need more names.
+  // ── Effect 4: background log scan (enrichment only, never overwrites) ────
   useEffect(() => {
     if (!address || !CONTRACTS_DEPLOYED) return
     if (balance === undefined || balance === 0n) return
@@ -243,56 +292,50 @@ export function useMyNames(): UseMyNamesResult {
     scanAbortRef.current = ctrl
 
     void (async () => {
-      const cached = readCache(address)
-      const revCandidate = (typeof reverseRecord === 'string' && reverseRecord.length > 0)
-        ? reverseRecord : null
-
-      const eventLabels = await scanLabelsFromLogs(address, ctrl.signal)
+      const eventLabels = await scanLabels(address, ctrl.signal)
       if (ctrl.signal.aborted) return
-
-      const candidates = [...new Set([
-        ...(revCandidate ? [revCandidate] : []),
-        ...cached,
-        ...eventLabels,
-      ])]
-
-      if (candidates.length === 0) {
-        // Scan found nothing — if we don't already have names show error
-        setStatus(s => s === 'loading' ? 'error' : s)
+      if (eventLabels.length === 0) {
+        // Scan found nothing — don't overwrite existing state, just clear loading
+        setStatus(prev => prev === 'loading' ? 'ready' : prev)
         return
       }
 
-      // Verify all candidates in parallel (fast)
-      const results = await Promise.all(
-        candidates.map(async lbl => ({
-          lbl,
-          owned: await isOwned(lbl, address),
-        }))
-      )
-      if (ctrl.signal.aborted) return
+      // We have event labels — verify the first one (one name per wallet)
+      const label = eventLabels[0]
 
-      const verified = results.filter(r => r.owned).map(r => r.lbl)
-      writeCache(address, verified)
-      setNames(verified)
+      // CRITICAL: if seedName already set a name, don't overwrite it
+      if (seededRef.current) return
+
+      const owned = await verifyOwned(label, address)
+      if (ctrl.signal.aborted) return
+      if (!owned) {
+        setStatus(prev => prev === 'loading' ? 'ready' : prev)
+        return
+      }
+
+      // Log scan confirmed ownership — set name (only if not already seeded)
+      if (seededRef.current) return
+      seededRef.current = label
+      writeCache(address, [label])
+      writeActivePreference(address, label)
+      setNames([label])
       setStatus('ready')
+      if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null }
     })()
 
     return () => ctrl.abort()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [address, tick, balance !== undefined && balance > 0n ? 1 : 0])
+  }, [address, tick, balance === 0n ? 0 : balance === undefined ? -1 : 1])
 
-  // ── Derive activeName ──────────────────────────────────────────────────────
+  // ── Derive activeName ─────────────────────────────────────────────────────
   const activeName: string | null = (() => {
     if (names.length === 0) return null
     if (address) {
-      const pref = readActivePreference(address)
+      const pref = readActivePref(address)
       if (pref && names.includes(pref)) return pref
-    }
-    if (typeof reverseRecord === 'string' && reverseRecord.length > 0 && names.includes(reverseRecord)) {
-      return reverseRecord
     }
     return names[0]
   })()
 
-  return { names, activeName, status, refetch, setPreferredName }
+  return { names, activeName, status, refetch, setPreferredName, seedName }
 }

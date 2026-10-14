@@ -5,16 +5,12 @@
  * Uses useBootCheck to block minting when contracts aren't wired (M2).
  * Post-mint: optional "Set as primary name" button (simulateContract first).
  */
-import { useState, useCallback } from 'react'
-import { useAccount, useSwitchChain, usePublicClient, useWriteContract, useWaitForTransactionReceipt } from 'wagmi'
 import { Search, CheckCircle, XCircle, Loader2, ExternalLink, AlertTriangle, RefreshCw } from 'lucide-react'
 import { formatName } from '@/utils/nameNormalize'
 import { useMintFlow } from '@/hooks/useMintFlow'
 import { useBootCheck } from '@/hooks/useBootCheck'
 import { buildTxExplorerUrl } from '@/onchain-facts'
 import { activeChain } from '@/config'
-import { parseOnchainError } from '@/utils/formatAddress'
-import { REVERSE_REGISTRAR_ADDRESS, REVERSE_REGISTRAR_ABI, CONTRACTS_DEPLOYED } from '@/contracts'
 import type { UseMyNamesResult } from '@/hooks/useMyNames'
 
 const CHAIN_ID = activeChain.id
@@ -24,65 +20,7 @@ interface MintScreenProps {
   onMintComplete?: () => void
 }
 
-// ── SetPrimaryButton: optional post-mint action ───────────────────────────────
-function SetPrimaryButton({ label }: { label: string }) {
-  const { address, isConnected, chainId } = useAccount()
-  const { switchChain } = useSwitchChain()
-  const wrongChain = isConnected && chainId !== CHAIN_ID
-  const publicClient = usePublicClient({ chainId: CHAIN_ID })
 
-  const { writeContractAsync, isPending } = useWriteContract()
-  const [txHash, setTxHash] = useState<`0x${string}` | null>(null)
-  const [simErr, setSimErr] = useState<string | null>(null)
-  const [done, setDone] = useState(false)
-
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
-    hash: txHash ?? undefined, confirmations: 1, timeout: 300_000,
-  })
-
-  const handle = useCallback(async () => {
-    if (!address || !publicClient || !CONTRACTS_DEPLOYED) return
-    if (wrongChain) { switchChain({ chainId: CHAIN_ID }); return }
-    setSimErr(null)
-    const req = {
-      address: REVERSE_REGISTRAR_ADDRESS,
-      abi: REVERSE_REGISTRAR_ABI,
-      functionName: 'setName' as const,
-      args: [label] as [string],
-      chainId: CHAIN_ID,
-    }
-    try {
-      await publicClient.simulateContract({ ...req, account: address })
-      const hash = await writeContractAsync(req)
-      setTxHash(hash)
-    } catch (e: unknown) {
-      setSimErr(parseOnchainError(e instanceof Error ? e : new Error(String(e))))
-    }
-  }, [address, publicClient, wrongChain, switchChain, label, writeContractAsync])
-
-  if (done || isSuccess) {
-    return (
-      <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--success)' }}>
-        <CheckCircle className="size-3.5" />
-        Set as primary name
-      </div>
-    )
-  }
-
-  return (
-    <div className="space-y-1.5">
-      <button
-        onClick={() => { void handle(); if (isSuccess) setDone(true) }}
-        disabled={isPending || isConfirming}
-        className="w-full py-2.5 rounded-xl text-sm font-semibold transition hover:opacity-90 disabled:opacity-40"
-        style={{ background: 'rgba(16,97,166,0.1)', color: 'var(--accent)' }}
-      >
-        {isPending ? 'Confirm in wallet…' : isConfirming ? 'Setting primary…' : 'Set as primary name'}
-      </button>
-      {simErr && <p className="text-xs" style={{ color: 'var(--danger)' }}>{simErr}</p>}
-    </div>
-  )
-}
 
 export default function MintScreen({ myNames, onMintComplete }: MintScreenProps) {
   const boot = useBootCheck()
@@ -98,7 +36,7 @@ export default function MintScreen({ myNames, onMintComplete }: MintScreenProps)
     mintError,
     wrongChain, handleSwitchChain, isConnected,
     handleSearch, handleCommit, handleRegister, handleReset,
-  } = useMintFlow(onMintComplete)
+  } = useMintFlow(onMintComplete, myNames.seedName)
 
   // ── Boot check gate ───────────────────────────────────────────────────────
   if (!boot.checking && !boot.ok) {
@@ -115,8 +53,11 @@ export default function MintScreen({ myNames, onMintComplete }: MintScreenProps)
     )
   }
 
-  // ── Already owns a name — only when status is ready (not while loading) ──
-  if (status === 'ready' && names.length > 0 && phase === 'idle') {
+  // ── Already owns a name — block minting if name is known OR still loading ──
+  // Show block on: ready+name known, or loading (prevents flash-of-mint-form).
+  // Only show the form when status=ready AND names is confirmed empty.
+  const hasName = names.length > 0
+  if (hasName && phase === 'idle') {
     return (
       <div className="rounded-2xl p-5 flex items-center gap-3" style={{ background: 'rgba(26,128,71,0.06)', border: '1px solid rgba(26,128,71,0.2)' }}>
         <CheckCircle className="size-6 shrink-0" style={{ color: 'var(--success)' }} />
@@ -127,6 +68,20 @@ export default function MintScreen({ myNames, onMintComplete }: MintScreenProps)
           <p className="text-xs mt-0.5" style={{ color: 'var(--muted)' }}>
             Each wallet holds one arc.name. Manage it in Settings.
           </p>
+        </div>
+      </div>
+    )
+  }
+
+  // While loading and no cache, show a skeleton rather than the mint form
+  if (status === 'loading' && !hasName && phase === 'idle') {
+    return (
+      <div className="rounded-2xl p-5 animate-pulse flex items-center gap-3"
+        style={{ background: 'var(--surface-muted)', border: '1px solid var(--border)' }}>
+        <div className="size-6 rounded-full shrink-0" style={{ background: 'var(--border)' }} />
+        <div className="space-y-2 flex-1">
+          <div className="h-3 w-32 rounded-full" style={{ background: 'var(--border)' }} />
+          <div className="h-2.5 w-48 rounded-full" style={{ background: 'var(--border)' }} />
         </div>
       </div>
     )
@@ -336,7 +291,7 @@ export default function MintScreen({ myNames, onMintComplete }: MintScreenProps)
           <div>
             <p className="display text-xl font-bold" style={{ color: 'var(--ink)' }}>{formatName(normalized)}</p>
             <p className="text-sm mt-1" style={{ color: 'var(--muted)' }}>
-              Your name is registered and resolves to your wallet — no extra "link" step needed.
+              Your name is registered and resolves to your wallet.
             </p>
           </div>
           {registerTxHash && (
@@ -345,8 +300,9 @@ export default function MintScreen({ myNames, onMintComplete }: MintScreenProps)
               View on explorer <ExternalLink className="size-3" />
             </a>
           )}
-          {/* Optional: set as primary name */}
-          <SetPrimaryButton label={normalized} />
+          <div className="flex items-center justify-center gap-1.5 text-xs" style={{ color: 'var(--success)' }}>
+            <CheckCircle className="size-3.5" /> Your name is now your primary address
+          </div>
           <button onClick={handleReset}
             className="block mx-auto text-xs font-semibold" style={{ color: 'var(--muted)' }}>
             Search another name
