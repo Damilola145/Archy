@@ -1,0 +1,295 @@
+{
+  "contractAddress": "0x717257b367474cc99d5686cf8ecdd94661a93385",
+  "network": "ARC-TESTNET",
+  "deployerWalletId": "3c2464b2-8369-52e2-a782-800bbeca5396",
+  "contract_code_path": "/home/user/app/contracts/ArcResolver.sol",
+  "contract_compiled_code_path": "/home/user/app/contracts/out/ArcResolver.sol/ArcResolver.json",
+  "contract_network_and_links": {
+    "Arc Testnet": "https://explorer.testnet.arc.io/address/0x717257b367474cc99d5686cf8ecdd94661a93385"
+  },
+  "contract_deployments": [
+    {
+      "chain": "Arc Testnet",
+      "address": "0x717257b367474cc99d5686cf8ecdd94661a93385",
+      "explorerUrl": "https://explorer.testnet.arc.io/address/0x717257b367474cc99d5686cf8ecdd94661a93385",
+      "txHash": "0x15438d5acb3f5f36818f5df749b7344399afec48c4cd86d335109e743b2b4cda",
+      "deployedAt": "2026-10-14T08:56:50.213Z"
+    },
+    {
+      "chain": "Arc Testnet",
+      "address": "0xae28342501f1e1c4747e7e394cedcc2d54558093",
+      "explorerUrl": "https://explorer.testnet.arc.io/address/0xae28342501f1e1c4747e7e394cedcc2d54558093",
+      "txHash": "0x7bfc8c738679be957bc5b0b6e0fb34465c6e967df105f4aa4752f5feb71654af",
+      "deployedAt": "2026-10-14T00:36:01.581Z"
+    },
+    {
+      "chain": "Arc Testnet",
+      "address": "0xabd4dd61b83e18e53bcd25d6efe7a0666649f59b",
+      "explorerUrl": "https://explorer.testnet.arc.io/address/0xabd4dd61b83e18e53bcd25d6efe7a0666649f59b",
+      "txHash": "0xebb519b5bd98d777e8dc9f0f7cf29d7929e8c4a3d9d2a12d302d82d74020fbef",
+      "deployedAt": "2026-10-13T11:08:51.773Z"
+    }
+  ],
+  "abi": [
+    {
+      "type": "constructor",
+      "inputs": [
+        {
+          "name": "_owner",
+          "type": "address",
+          "internalType": "address"
+        },
+        {
+          "name": "_registry",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "VERSION",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "uint8",
+          "internalType": "uint8"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "addr",
+      "inputs": [
+        {
+          "name": "node",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "owner",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "registry",
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "",
+          "type": "address",
+          "internalType": "contract ArcNameRegistry"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "renounceOwnership",
+      "inputs": [],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "setAddr",
+      "inputs": [
+        {
+          "name": "node",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        },
+        {
+          "name": "a",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "setText",
+      "inputs": [
+        {
+          "name": "node",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        },
+        {
+          "name": "key",
+          "type": "string",
+          "internalType": "string"
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "internalType": "string"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "function",
+      "name": "text",
+      "inputs": [
+        {
+          "name": "node",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        },
+        {
+          "name": "key",
+          "type": "string",
+          "internalType": "string"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "",
+          "type": "string",
+          "internalType": "string"
+        }
+      ],
+      "stateMutability": "view"
+    },
+    {
+      "type": "function",
+      "name": "transferOwnership",
+      "inputs": [
+        {
+          "name": "newOwner",
+          "type": "address",
+          "internalType": "address"
+        }
+      ],
+      "outputs": [],
+      "stateMutability": "nonpayable"
+    },
+    {
+      "type": "event",
+      "name": "AddrChanged",
+      "inputs": [
+        {
+          "name": "node",
+          "type": "bytes32",
+          "indexed": true,
+          "internalType": "bytes32"
+        },
+        {
+          "name": "addr",
+          "type": "address",
+          "indexed": false,
+          "internalType": "address"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "OwnershipTransferred",
+      "inputs": [
+        {
+          "name": "previousOwner",
+          "type": "address",
+          "indexed": true,
+          "internalType": "address"
+        },
+        {
+          "name": "newOwner",
+          "type": "address",
+          "indexed": true,
+          "internalType": "address"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "event",
+      "name": "TextChanged",
+      "inputs": [
+        {
+          "name": "node",
+          "type": "bytes32",
+          "indexed": true,
+          "internalType": "bytes32"
+        },
+        {
+          "name": "key",
+          "type": "string",
+          "indexed": true,
+          "internalType": "string"
+        },
+        {
+          "name": "value",
+          "type": "string",
+          "indexed": false,
+          "internalType": "string"
+        }
+      ],
+      "anonymous": false
+    },
+    {
+      "type": "error",
+      "name": "NotAuthorised",
+      "inputs": [
+        {
+          "name": "node",
+          "type": "bytes32",
+          "internalType": "bytes32"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "OwnableInvalidOwner",
+      "inputs": [
+        {
+          "name": "owner",
+          "type": "address",
+          "internalType": "address"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "OwnableUnauthorizedAccount",
+      "inputs": [
+        {
+          "name": "account",
+          "type": "address",
+          "internalType": "address"
+        }
+      ]
+    },
+    {
+      "type": "error",
+      "name": "ZeroAddress",
+      "inputs": []
+    }
+  ]
+}

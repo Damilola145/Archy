@@ -1,0 +1,57 @@
+{
+  "contractAddress": "0x70c32215f6c27093b67f3163ac5723d8aaf4071d",
+  "network": "ARC-TESTNET",
+  "deployerWalletId": "3c2464b2-8369-52e2-a782-800bbeca5396",
+  "contract_code_path": "/home/user/app/contracts/FreeOracle.sol",
+  "contract_compiled_code_path": "/home/user/app/contracts/out/FreeOracle.sol/FreeOracle.json",
+  "contract_network_and_links": {
+    "Arc Testnet": "https://explorer.testnet.arc.io/address/0x70c32215f6c27093b67f3163ac5723d8aaf4071d"
+  },
+  "contract_deployments": [
+    {
+      "chain": "Arc Testnet",
+      "address": "0x70c32215f6c27093b67f3163ac5723d8aaf4071d",
+      "explorerUrl": "https://explorer.testnet.arc.io/address/0x70c32215f6c27093b67f3163ac5723d8aaf4071d",
+      "txHash": "0x0e7fe1ab9b7714f1f76dac0e930598b268dedf9db313267be2892569f59151ed",
+      "deployedAt": "2026-10-14T00:34:52.291Z"
+    },
+    {
+      "chain": "Arc Testnet",
+      "address": "0x8d546f8dfc649cce6ae8deee8b82091bb8faf6d6",
+      "explorerUrl": "https://explorer.testnet.arc.io/address/0x8d546f8dfc649cce6ae8deee8b82091bb8faf6d6",
+      "txHash": "0xc1177cacc1dd8e4486d8d451e80541d2163e155a6b7a565abc304202d829c9bb",
+      "deployedAt": "2026-10-13T11:08:10.275Z"
+    }
+  ],
+  "abi": [
+    {
+      "type": "function",
+      "name": "price",
+      "inputs": [
+        {
+          "name": "",
+          "type": "string",
+          "internalType": "string"
+        },
+        {
+          "name": "",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "outputs": [
+        {
+          "name": "base",
+          "type": "uint256",
+          "internalType": "uint256"
+        },
+        {
+          "name": "premium",
+          "type": "uint256",
+          "internalType": "uint256"
+        }
+      ],
+      "stateMutability": "pure"
+    }
+  ]
+}
